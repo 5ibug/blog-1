@@ -1,0 +1,18 @@
+# 指定基础镜像
+FROM openjdk:8-jre
+
+LABEL maintainer="admin@5ibug.net"
+# 作者
+MAINTAINER WangZhen
+# 挂载目录
+VOLUME /home/blog
+# 创建目录
+RUN mkdir -p /home/blog
+# 指定路径
+WORKDIR /home/blog
+# 复制jar文件到路径
+COPY blog.jar /home/blog/blog.jar
+# COPY application.yml /home/blog/application.yml
+ENV TZ=Asia/Shanghai JAVA_OPTS="-Xms128m -Xmx256m -Djava.security.egd=file:/dev/./urandom"
+# 启动服务
+CMD java -jar blog.jar

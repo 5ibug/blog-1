@@ -1,0 +1,135 @@
+version: '3'
+services:
+  blog-mysql:
+    container_name: blog-mysql
+    restart: always
+    image: blog-mysql
+    build:
+      context: ./mysql
+    # ports:
+    #  - "3306:3306"
+    volumes:
+      - ./mysql/conf:/etc/mysql/conf.d
+      - ./mysql/logs:/logs
+      - ./mysql/data:/var/lib/mysql
+    command: [
+      'mysqld',
+      '--innodb-buffer-pool-size=80M',
+      '--character-set-server=utf8mb4',
+      '--collation-server=utf8mb4_unicode_ci',
+      '--default-time-zone=+8:00',
+      '--lower-case-table-names=1'
+    ]
+    environment:
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_ROOT_PASSWORD: 123456
+
+  blog-redis:
+    container_name: blog-redis
+    restart: always
+    image: blog-redis
+    privileged: true
+    build:
+      context: ./redis
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - ./redis/conf/redis.conf:/home/blog/redis/redis.conf
+      - ./redis/data:/data
+    command: redis-server /home/blog/redis/redis.conf
+
+  blog-rabbitmq:
+    container_name: blog-rabbitmq
+    restart: always
+    privileged: true
+    image: blog-rabbitmq
+    build:
+      context: ./rabbitmq
+    # ports:
+    #  - "5672:5672"
+    #  - "15672:15672"
+    volumes:
+      - ./rabbitmq/data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: "mq"
+      RABBITMQ_DEFAULT_PASS: "asdasd"
+
+  blog-maxwell:
+    container_name: blog-maxwell
+    restart: always
+    image: zendesk/maxwell
+    depends_on:
+      - blog-mysql
+      - blog-rabbitmq
+    links:
+      - blog-mysql
+      - blog-rabbitmq
+    command: [
+      'bin/maxwell',
+      '--user=root',
+      '--password=123456',
+      '--host=blog-mysql',
+      '--producer=rabbitmq',
+      '--rabbitmq_user=mq',
+      '--rabbitmq_pass=asdasd',
+      '--rabbitmq_host=blog-rabbitmq',
+      '--rabbitmq_port=5672',
+      '--rabbitmq_exchange=maxwell_exchange',
+      '--rabbitmq_exchange_type=fanout',
+      '--rabbitmq_exchange_durable=true',
+      '--filter=exclude: *.*, include: blog.tb_article.article_title = *, include: blog.tb_article.article_content = *, include: blog.tb_article.is_delete = *, include: blog.tb_article.status = *',
+    ]
+
+  # elasticsearch
+  blog-music:
+    container_name: blog-music
+    restart: always
+    image:   binaryify/netease_cloud_music_api
+    environment:
+      - HOST=0.0.0.0
+
+  # elasticsearch
+  blog-elasticsearch:
+    container_name: blog-elasticsearch
+    restart: always
+    image:   blog-elasticsearch
+    build:
+      context: ./elasticsearch
+    # ports:
+    #  - "5601:5601"
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+      - ./elasticsearch/logs:/usr/share/elasticsearch/logs
+      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    environment:
+      # 开启内存锁定
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      # 指定单节点启动
+      - discovery.type=single-node
+
+
+  blog:
+    container_name: blog
+    image: blog
+    restart: always
+    environment:
+      - MODE=standalone
+      - TZ=Asia/Shanghai
+    build:
+      context: ./blog
+      dockerfile: dockerfile
+    volumes:
+      - ./blog/application.yml:/home/blog/application.yml
+    depends_on:
+      - blog-redis
+      - blog-mysql
+      - blog-rabbitmq
+      - blog-elasticsearch
+    links:
+      - blog-redis
+      - blog-mysql
+      - blog-rabbitmq
+      - blog-elasticsearch
+    ports:
+      - "8080:8080"
